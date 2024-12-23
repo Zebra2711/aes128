@@ -1,7 +1,7 @@
 """
     NHÓM 1.THUẬT TOÁN MÃ HÓA AES-128
 
-    AES 128 bit Cipher Block Chaining (CBC) Mode and Electronic Codebook (ECB) Mode 
+    AES 128 bit Cipher Block Chaining (CBC) Mode and Electronic Codebook (ECB) Mode
     Password-Based Key Derivation Function 2(PBKDF2),
     Cryptographic Message Syntax PKCS #7,
     Hash-based message authentication codes (HMAC) SHA256
@@ -10,11 +10,16 @@
     Encrypt Input   :   Cipher Text type BASE64
             Output  :   Plain Text type UTF-8
     KEY type UTF-8
-    
+
 
 """
 MODE_ECB = 1
 MODE_CBC = 2
+AES_KEY_SIZE_DEFAULT = 16
+HMAC_KEY_SIZE = 16
+IV_SIZE = 16
+SALT_SIZE = 16
+HMAC_SIZE = 32
 s_box = (
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
     0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
@@ -287,7 +292,7 @@ class AES:
             previous = ciphertext_block
 
         return unpad(b''.join(blocks))
-    
+
     def encrypt_ecb(self, plaintext):
         plaintext = pad(plaintext)
         blocks = []
@@ -295,7 +300,7 @@ class AES:
             block = self.encrypt_block(plaintext_block)
             blocks.append(block)
         return b''.join(blocks)
-    
+
     def decrypt_ecb(self, ciphertext):
         blocks = []
         for ciphertext_block in split_blocks(ciphertext):
@@ -303,32 +308,40 @@ class AES:
         return unpad(b''.join(blocks))
 
 
-import os
-from hashlib import pbkdf2_hmac
-from hmac import new as new_hmac, compare_digest
 
-AES_KEY_SIZE = 16
-HMAC_KEY_SIZE = 16
-IV_SIZE = 16
+# def get_key_iv(password, salt, workload=100000):
+#     """
+#     Stretches the password and extracts an AES key, an HMAC key and an AES
+#     initialization vector.
+#     """
+#     from hashlib import pbkdf2_hmac
+#     stretched = pbkdf2_hmac('sha256', password, salt, workload, AES_KEY_SIZE + IV_SIZE + HMAC_KEY_SIZE)
+#     aes_key, stretched = stretched[:AES_KEY_SIZE], stretched[AES_KEY_SIZE:]
+#     hmac_key, stretched = stretched[:HMAC_KEY_SIZE], stretched[HMAC_KEY_SIZE:]
+#     iv = stretched[:IV_SIZE]
+#     print(f"PBKDF2 ==> aes_key:{aes_key}, hmac_key:{hmac_key}, iv:{iv}")
+#     return aes_key, hmac_key, iv
 
-SALT_SIZE = 16
-HMAC_SIZE = 32
-
-def get_key_iv(password, salt, workload=100000):
+def get_key_iv_argon2(passwd, salt, key_size=AES_KEY_SIZE_DEFAULT):
     """
     Stretches the password and extracts an AES key, an HMAC key and an AES
     initialization vector.
     """
-    stretched = pbkdf2_hmac('sha256', password, salt, workload, AES_KEY_SIZE + IV_SIZE + HMAC_KEY_SIZE)
+    from pyargon2 import hash_bytes
+    AES_KEY_SIZE = key_size
+    print(AES_KEY_SIZE)
+    stretched = hash_bytes(passwd,salt,encoding='raw',hash_len=AES_KEY_SIZE+HMAC_KEY_SIZE+IV_SIZE)
     aes_key, stretched = stretched[:AES_KEY_SIZE], stretched[AES_KEY_SIZE:]
     hmac_key, stretched = stretched[:HMAC_KEY_SIZE], stretched[HMAC_KEY_SIZE:]
     iv = stretched[:IV_SIZE]
+    print(f"ARGON2 ==> aes_key:{aes_key}, hmac_key:{hmac_key}, iv:{iv}")
     return aes_key, hmac_key, iv
 
 
-
-def encrypt(key, plaintext, mode=MODE_ECB, workload=100000):
-
+def encrypt(key, plaintext, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT):
+    from base64 import b64encode
+    from hmac import new as new_hmac
+    from os import urandom
     print("\nAES128 ENCRYPT",end='\t')
     if isinstance(key, str):
         key = key.encode('utf-8')
@@ -340,8 +353,11 @@ def encrypt(key, plaintext, mode=MODE_ECB, workload=100000):
 
         The exact algorithm is specified in the module docstring.
     """
-    salt = os.urandom(SALT_SIZE)
-    key, hmac_key, iv = get_key_iv(key, salt, workload)
+    salt = urandom(SALT_SIZE)
+    print(f"SALT: {salt}")
+    #key, hmac_key, iv = get_key_iv(key, salt, workload)
+    key, hmac_key, iv = get_key_iv_argon2(key, salt, key_size)
+    print(f"KEY_LEN:{len(key)}")
 
     if mode == MODE_ECB:
         print("(ECB MODE)")
@@ -359,16 +375,19 @@ def encrypt(key, plaintext, mode=MODE_ECB, workload=100000):
     return ciphertext_base64
 
 
-from base64 import b64encode, b64decode
-def decrypt(key, ciphertext_base64, mode=MODE_ECB, workload=100000):
+
+def decrypt(key, ciphertext_base64, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT):
     """
         Decrypts `ciphertext` with `key` using AES-128, an HMAC to verify integrity,
         and PBKDF2 to stretch the given key.
 
         The exact algorithm is specified in the module docstring.
     """
+    from hmac import new as new_hmac, compare_digest
+    from base64 import b64decode
     ciphertext =b64decode(ciphertext_base64.encode())
     print("\nAES128 DECRYPT",end='\t')
+    #print(f'check:{ciphertext}')
     assert len(ciphertext) % 16 == 0, "Ciphertext must be made of full 16-byte blocks."
 
     assert len(ciphertext) >= 32, """
@@ -380,8 +399,9 @@ def decrypt(key, ciphertext_base64, mode=MODE_ECB, workload=100000):
 
     hmac, ciphertext = ciphertext[:HMAC_SIZE], ciphertext[HMAC_SIZE:]
     salt, ciphertext = ciphertext[:SALT_SIZE], ciphertext[SALT_SIZE:]
-    key, hmac_key, iv = get_key_iv(key, salt, workload)
-    
+    #key, hmac_key, iv = get_key_iv(key, salt, workload)
+    key, hmac_key, iv = get_key_iv_argon2(key, salt,key_size)
+
     if mode == MODE_ECB:
         print("(ECB MODE)")
         plaintext = AES(key).decrypt_ecb(ciphertext)
@@ -395,9 +415,9 @@ def decrypt(key, ciphertext_base64, mode=MODE_ECB, workload=100000):
 
         # return to plaintext utf-8 encoded
         return AES(key).decrypt_cbc(ciphertext, iv).decode('utf-8')
-    
-def base64_to_hex(text_base64):
-    return b64encode(text_base64.encode()).hex()
+
+# def base64_to_hex(text_base64):
+#     return b64encode(text_base64.encode()).hex()
 
 
 """
@@ -408,32 +428,37 @@ def base64_to_hex(text_base64):
     "Variable": @Key         utf-8
                 @PlainText   utf-8
                 @Mode        MODE_ECB = 1, MODE_CBC = 2
-                                                                         
-    """
+
+"""
 
 import customtkinter as ctk
 class MyApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("AES-128")
+        self.title("AES")
         self.geometry("420x600")
         self.resizable(False, False)
 
-        self.iconbitmap(os.path.dirname(os.path.abspath(__file__))+"/aes.ico")
+        # self.iconbitmap(os.path.dirname(os.path.abspath(__file__))+"/aes.ico")
 
         # Create a select box (dropdown)
         self.select_var = ctk.StringVar()
         self.select_var.set("Encrypt")  # Default selection
-        self.select_box = ctk.CTkComboBox(self, values=["Encrypt", "Decrypt"], variable=self.select_var,state="readonly",command=self.update_label_text)
+        self.select_box = ctk.CTkComboBox(self,width=90, values=["Encrypt", "Decrypt"], variable=self.select_var,state="readonly",command=self.update_label_text)
         self.select_box.grid(row=0, column=0, padx=10, pady=5,sticky="W")
 
         self.select_mode = ctk.StringVar()
         self.select_mode.set("ECB")  # Default selection
-        self.select_mode = ctk.CTkComboBox(self, width=80,values=["ECB", "CBC"], variable=self.select_mode,state="readonly")
+        self.select_mode = ctk.CTkComboBox(self, width=70,values=["ECB", "CBC"], variable=self.select_mode,state="readonly")
         self.select_mode.grid(row=0, column=2, padx=10, pady=5)
 
+        self.key_lenght = ctk.StringVar()
+        self.key_lenght.set("128")  # Default selection
+        self.key_lenght = ctk.CTkComboBox(self, width=70,values=["128","196","256"], variable=self.key_lenght,state="readonly")
+        self.key_lenght.grid(row=0, column=3, padx=10, pady=5)
+
         # Create the button
-        self.go_button = ctk.CTkButton(self, text="Go", command=self.on_go_button_click)
+        self.go_button = ctk.CTkButton(self,width=80, text="Go", command=self.on_go_button_click)
         self.go_button.grid(row=0, column=4, padx=10, pady=5,sticky="E")
 
 
@@ -445,7 +470,7 @@ class MyApp(ctk.CTk):
         self.textbox_input= ctk.CTkTextbox(self,width = 400)
         self.textbox_input.grid(row=2, column=0, columnspan=5,padx=10, pady=5)
 
-        
+
 
         # KEY
         self.label_key = ctk.CTkLabel(self, text="Key", fg_color="transparent")
@@ -467,8 +492,14 @@ class MyApp(ctk.CTk):
         else:
             self.label_input.configure(text="Cipher Text")
             self.label_output.configure(text="Plain Text")
-        
+            self.textbox_input.delete("0.0", "end")
+            self.textbox_input.insert("0.0",self.textbox_output.get("0.0", "end"))
+            self.textbox_output.configure(state="normal")
+            self.textbox_output.delete("0.0", "end")
+            self.textbox_output.configure(state="disabled")
+
     def on_go_button_click(self):
+        from numpy import fromstring
         mode = self.select_var.get()
         mode_t = 1
         if self.select_mode.get() == "CBC":
@@ -478,20 +509,28 @@ class MyApp(ctk.CTk):
 
         Key = self.textbox_key.get()
         Input = self.textbox_input.get("0.0","end")
+        bit = fromstring(self.key_lenght.get(),dtype=int,sep=' ')[0]
+        print(bit)
+        key_size = 16
+        if bit == 196:
+            key_size = 24
+        elif bit == 256:
+            key_size = 32
+
         try:
             if mode == "Encrypt":
-                Output = encrypt(Key, Input,mode_t)
+                Output = encrypt(Key, Input,mode_t,key_size)
             else:
-                Output = decrypt(Key, Input,mode_t)
+                Output = decrypt(Key, Input,mode_t,key_size)
         except Exception as ERROR:
             Output = f"""An error occurred {ERROR}\n
                         Check Input, Key or Mode again...
                     """
-            
+
         #print(Output)
         self.textbox_output.insert("0.0",Output)
         self.textbox_output.configure(state="disabled")
-        
+
 if __name__ == "__main__":
     app = MyApp()
     app.mainloop()
