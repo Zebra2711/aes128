@@ -12,6 +12,12 @@
     KEY type UTF-8
 
 """
+from pyargon2 import hash_bytes
+from base64 import b64encode, b64decode
+from hmac import new as new_hmac, compare_digest
+from os import urandom
+import customtkinter as ctk
+from pyperclip import copy, paste
 
 MODE_ECB = 1
 MODE_CBC = 2
@@ -313,25 +319,12 @@ class AES:
             blocks.append(self.decrypt_block(ciphertext_block))
         return unpad(b''.join(blocks))
 
-# def get_key_iv(password, salt, workload=100000):
-#     """
-#     Stretches the password and extracts an AES key, an HMAC key and an AES
-#     initialization vector.
-#     """
-#     from hashlib import pbkdf2_hmac
-#     stretched = pbkdf2_hmac('sha256', password, salt, workload, AES_KEY_SIZE + IV_SIZE + HMAC_KEY_SIZE)
-#     aes_key, stretched = stretched[:AES_KEY_SIZE], stretched[AES_KEY_SIZE:]
-#     hmac_key, stretched = stretched[:HMAC_KEY_SIZE], stretched[HMAC_KEY_SIZE:]
-#     iv = stretched[:IV_SIZE]
-#     print(f"PBKDF2 ==> aes_key:{aes_key}, hmac_key:{hmac_key}, iv:{iv}")
-#     return aes_key, hmac_key, iv
-
 def get_key_iv_argon2(passwd, salt, key_size=AES_KEY_SIZE_DEFAULT):
     """
     Stretches the password and extracts an AES key, an HMAC key and an AES
     initialization vector.
     """
-    from pyargon2 import hash_bytes
+    
     AES_KEY_SIZE = key_size
     stretched = hash_bytes(passwd,salt,encoding='raw',hash_len=AES_KEY_SIZE+HMAC_KEY_SIZE+IV_SIZE)
     aes_key, stretched = stretched[:AES_KEY_SIZE], stretched[AES_KEY_SIZE:]
@@ -340,10 +333,8 @@ def get_key_iv_argon2(passwd, salt, key_size=AES_KEY_SIZE_DEFAULT):
     # print(f"ARGON2 ==> aes_key:{aes_key}, hmac_key:{hmac_key}, iv:{iv}")
     return aes_key, hmac_key, iv
 
+
 def encrypt(key, plaintext, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT):
-    from base64 import b64encode
-    from hmac import new as new_hmac
-    from os import urandom
     # print("\nAES128 ENCRYPT",end='\t')
     if isinstance(key, str):
         key = key.encode('utf-8')
@@ -373,8 +364,8 @@ def encrypt(key, plaintext, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT):
 
     # Convert ciphertext from bytes to base64
     ciphertext_base64 = b64encode(hmac + salt + ciphertext).decode()
-
     return ciphertext_base64
+
 
 
 def decrypt(key, ciphertext_base64, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT):
@@ -384,8 +375,7 @@ def decrypt(key, ciphertext_base64, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT
 
         The exact algorithm is specified in the module docstring.
     """
-    from hmac import new as new_hmac, compare_digest
-    from base64 import b64decode
+
     ciphertext =b64decode(ciphertext_base64.encode())
     # print("\nAES128 DECRYPT",end='\t')
     assert len(ciphertext) % 16 == 0, "Ciphertext must be made of full 16-byte blocks."
@@ -399,13 +389,11 @@ def decrypt(key, ciphertext_base64, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT
 
     hmac, ciphertext = ciphertext[:HMAC_SIZE], ciphertext[HMAC_SIZE:]
     salt, ciphertext = ciphertext[:SALT_SIZE], ciphertext[SALT_SIZE:]
-    #key, hmac_key, iv = get_key_iv(key, salt, workload)
     key, hmac_key, iv = get_key_iv_argon2(key, salt,key_size)
 
     if mode == MODE_ECB:
         #print("(ECB MODE)")
         plaintext = AES(key).decrypt_ecb(ciphertext)
-
         # return to plaintext utf-8 encoded
         return plaintext.decode('utf-8')
     elif mode == MODE_CBC:
@@ -427,12 +415,12 @@ def decrypt(key, ciphertext_base64, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT
 
 """
 
-import customtkinter as ctk
+
 class MyApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("AES")
-        self.geometry("420x600") 
+        self.geometry("520x600") 
         self.resizable(False, False)
 
         # Create a select box (dropdown)
@@ -444,42 +432,53 @@ class MyApp(ctk.CTk):
         self.select_mode = ctk.StringVar()
         self.select_mode.set("ECB")  # Default selection
         self.select_mode = ctk.CTkComboBox(self, width=70,values=["ECB", "CBC"], variable=self.select_mode,state="readonly")
-        self.select_mode.grid(row=0, column=2, padx=10, pady=5)
+        self.select_mode.grid(row=0, column=1, padx=10, pady=5)
 
         self.key_lenght = ctk.StringVar()
-        self.key_lenght.set("128")  # Default selection
-        self.key_lenght = ctk.CTkComboBox(self, width=70,values=["128","196","256"], variable=self.key_lenght,state="readonly")
+        self.key_lenght.set("AES128")  # Default selection
+        self.key_lenght = ctk.CTkComboBox(self, width=90,values=["AES128","AES192","AES256"], variable=self.key_lenght,state="readonly")
         self.key_lenght.grid(row=0, column=3, padx=10, pady=5)
 
         # Create the button Go
-        self.go_button = ctk.CTkButton(self,width=80, text="Go", command=self.on_go_button_click)
-        self.go_button.grid(row=0, column=4, padx=10, pady=5,sticky="E")
-
+        self.go_button = ctk.CTkButton(self,width=120, text="Go", command=self.on_go_button_click)
+        self.go_button.grid(row=0, column=4, padx=10, columnspan=2, pady=5,sticky="E")
 
         # Create input text boxes INPUT
         self.label_input = ctk.CTkLabel(self, text="Plain Text",fg_color="transparent")
-        self.label_input.grid(row=1, column=0,columnspan=5, padx=10, pady=0, sticky="W")
+        self.label_input.grid(row=1, column=0,columnspan=6, padx=10, pady=0, sticky="W")
 
-        self.textbox_input= ctk.CTkTextbox(self,width = 400)
-        self.textbox_input.grid(row=2, column=0, columnspan=5,padx=10, pady=5)
+        self.clean_button = ctk.CTkButton(self,width=50, text="clear", command=self.on_clean_button_click)
+        self.clean_button.grid(row=1, column=4, padx=0, pady=0,sticky="E")
 
+        self.paste_button = ctk.CTkButton(self,width=50, text="paste", command=self.on_paste_button_click)
+        self.paste_button.grid(row=1, column=5, padx=10, pady=0,sticky="W")
 
+        self.textbox_input= ctk.CTkTextbox(self,width = 500)
+        self.textbox_input.grid(row=2, column=0, columnspan=6,padx=10, pady=5)
 
         # KEY
         self.label_key = ctk.CTkLabel(self, text="Key", fg_color="transparent")
-        self.label_key.grid(row=3, column=0,columnspan=5, padx=10, pady=0, sticky="W")
-        self.textbox_key= ctk.CTkEntry(self,width = 400, placeholder_text="Enter the key...")
-        self.textbox_key.grid(row=4, column=0,columnspan=5, padx=10, pady=5)
+        self.label_key.grid(row=3, column=0,columnspan=6, padx=10, pady=0, sticky="W")
+        self.textbox_key= ctk.CTkEntry(self,width = 500, placeholder_text="Enter the key...")
+        self.textbox_key.grid(row=4, column=0,columnspan=6, padx=10, pady=5)
 
         #OUTPUT
         self.label_output = ctk.CTkLabel(self, text="Cipher Text", fg_color="transparent")
-        self.label_output.grid(row=5, column=0,columnspan=5, padx=10, pady=0, sticky="W")
+        self.label_output.grid(row=5, column=0,columnspan=6, padx=10, pady=0, sticky="W")
 
-        self.copy_button = ctk.CTkButton(self,width=80, text="copy", command=self.on_copy_button_click)
-        self.copy_button.grid(row=5, column=4, padx=10, pady=5,sticky="E")
+        self.copy_button = ctk.CTkButton(self,width=50, text="copy", command=self.on_copy_button_click)
+        self.copy_button.grid(row=5, column=5, padx=10, pady=5,sticky="W")
 
-        self.textbox_output = ctk.CTkTextbox(self,width = 400,state="disabled")
-        self.textbox_output.grid(row=6, column=0,columnspan=5, padx=10, pady=5)
+        self.textbox_output = ctk.CTkTextbox(self,width = 500,state="disabled")
+        self.textbox_output.grid(row=6, column=0,columnspan=6, padx=10, pady=5)
+
+    def remove_new_line(self,ciphertext):
+        len_ciphertext=len(ciphertext)
+        if ciphertext[len_ciphertext - 1] == "\n" and len_ciphertext > 1:
+            ciphertext = ciphertext[:len_ciphertext - 1]
+            return ciphertext
+        else:
+            return ""
 
     def update_label_text(self,event):
         mode = self.select_var.get()
@@ -491,10 +490,9 @@ class MyApp(ctk.CTk):
             self.label_output.configure(text="Plain Text")
 
             ciphertext = self.textbox_output.get("0.0", "end")
-            len_ciphertext=len(ciphertext)
-            if len_ciphertext == 0 or ( len_ciphertext == 1 and ciphertext == "\n"):
-                pass
-            else:
+            ciphertext = self.remove_new_line(ciphertext)
+
+            if ciphertext != "":
                 self.textbox_input.delete("0.0", "end")
                 self.textbox_input.insert("0.0",ciphertext)
                 self.textbox_output.configure(state="normal")
@@ -512,9 +510,9 @@ class MyApp(ctk.CTk):
         Input = self.textbox_input.get("0.0","end")
         bit = self.key_lenght.get()
         key_size = 16
-        if bit == "196":
+        if bit == "AES192":
             key_size = 24
-        elif bit == "256":
+        elif bit == "AES256":
             key_size = 32
         try:
             if mode == "Encrypt":
@@ -529,14 +527,17 @@ class MyApp(ctk.CTk):
         self.textbox_output.insert("0.0",Output)
         self.textbox_output.configure(state="disabled")
     def on_copy_button_click(self):
-        from pyperclip import copy
         ciphertext = self.textbox_output.get("0.0", "end")
-        len_ciphertext=len(ciphertext)
-        if len_ciphertext == 0 or ( len_ciphertext == 1 and ciphertext == "\n"):
-            pass
-        else:
+        ciphertext = self.remove_new_line(ciphertext)
+        if ciphertext != "":
             copy(ciphertext)
-            #print("copy to clipboard!")
+            print("copy to clipboard!")
+    def on_paste_button_click(self):
+        self.textbox_input.delete("0.0", "end")
+        self.textbox_input.insert("0.0",paste())
+
+    def on_clean_button_click(self):
+        self.textbox_input.delete("0.0", "end")
 
 if __name__ == "__main__":
     app = MyApp()
