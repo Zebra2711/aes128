@@ -1,8 +1,8 @@
 """
-    NHÓM 1.THUẬT TOÁN MÃ HÓA AES-128
+    THUẬT TOÁN MÃ HÓA AES
 
-    AES 128 bit Cipher Block Chaining (CBC) Mode and Electronic Codebook (ECB) Mode
-    Password-Based Key Derivation Function 2(PBKDF2),
+    AES Cipher Block Chaining (CBC) Mode and Electronic Codebook (ECB) Mode
+    Secure password hashing algorithm Argon2,
     Cryptographic Message Syntax PKCS #7,
     Hash-based message authentication codes (HMAC) SHA256
     Encrypt Input   :   Plain Text type UTF-8
@@ -11,8 +11,8 @@
             Output  :   Plain Text type UTF-8
     KEY type UTF-8
 
-
 """
+
 MODE_ECB = 1
 MODE_CBC = 2
 AES_KEY_SIZE_DEFAULT = 16
@@ -20,6 +20,7 @@ HMAC_KEY_SIZE = 16
 IV_SIZE = 16
 SALT_SIZE = 16
 HMAC_SIZE = 32
+
 s_box = (
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
     0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
@@ -87,6 +88,11 @@ def add_round_key(s, k):
         for j in range(4):
             s[i][j] ^= k[i][j]
 
+"""
+    The result (xtime) of multiplying a by 2 in GF(2^8) is achieved by first shifting a left by 1, 
+    and then XORing with 0x1B to handle the overflow that occurs when the shift moves bits 
+    out of the 8-bit range. This ensures the result is still in the finite field.
+"""
 xtime = lambda a: (((a << 1) ^ 0x1B) & 0xFF) if (a & 0x80) else (a << 1)
 
 
@@ -166,7 +172,7 @@ def split_blocks(message, block_size=16, require_padding=True):
 
 class AES:
     """
-    Class for AES-128 encryption with CBC mode and PKCS#7.
+    Class for AES encryption with CBC mode and PKCS#7.
 
     This is a raw implementation of AES, without key stretching or IV
     management. Unless you need that, please use `encrypt` and `decrypt`.
@@ -307,8 +313,6 @@ class AES:
             blocks.append(self.decrypt_block(ciphertext_block))
         return unpad(b''.join(blocks))
 
-
-
 # def get_key_iv(password, salt, workload=100000):
 #     """
 #     Stretches the password and extracts an AES key, an HMAC key and an AES
@@ -329,42 +333,40 @@ def get_key_iv_argon2(passwd, salt, key_size=AES_KEY_SIZE_DEFAULT):
     """
     from pyargon2 import hash_bytes
     AES_KEY_SIZE = key_size
-    print(AES_KEY_SIZE)
     stretched = hash_bytes(passwd,salt,encoding='raw',hash_len=AES_KEY_SIZE+HMAC_KEY_SIZE+IV_SIZE)
     aes_key, stretched = stretched[:AES_KEY_SIZE], stretched[AES_KEY_SIZE:]
     hmac_key, stretched = stretched[:HMAC_KEY_SIZE], stretched[HMAC_KEY_SIZE:]
     iv = stretched[:IV_SIZE]
-    print(f"ARGON2 ==> aes_key:{aes_key}, hmac_key:{hmac_key}, iv:{iv}")
+    # print(f"ARGON2 ==> aes_key:{aes_key}, hmac_key:{hmac_key}, iv:{iv}")
     return aes_key, hmac_key, iv
-
 
 def encrypt(key, plaintext, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT):
     from base64 import b64encode
     from hmac import new as new_hmac
     from os import urandom
-    print("\nAES128 ENCRYPT",end='\t')
+    # print("\nAES128 ENCRYPT",end='\t')
     if isinstance(key, str):
         key = key.encode('utf-8')
     if isinstance(plaintext, str):
         plaintext = plaintext.encode('utf-8')
     """
-        Encrypts `plaintext` with `key` using AES-128, an HMAC to verify integrity,
-        and PBKDF2 to stretch the given key.
+        Encrypts `plaintext` with `key` using AES, an HMAC to verify integrity,
+        and Argon2 to stretch the given key.
 
         The exact algorithm is specified in the module docstring.
     """
     salt = urandom(SALT_SIZE)
-    print(f"SALT: {salt}")
+    # print(f"SALT: {salt}")
     #key, hmac_key, iv = get_key_iv(key, salt, workload)
     key, hmac_key, iv = get_key_iv_argon2(key, salt, key_size)
-    print(f"KEY_LEN:{len(key)}")
+    # print(f"KEY_LEN:{len(key)}")
 
     if mode == MODE_ECB:
-        print("(ECB MODE)")
+        # print("(ECB MODE)")
         # Convert ciphertext from bytes to base64
         ciphertext = AES(key).encrypt_ecb(plaintext)
     elif mode == MODE_CBC:
-        print("(CBC MODE)")
+        # print("(CBC MODE)")
         ciphertext = AES(key).encrypt_cbc(plaintext, iv)
     hmac = new_hmac(hmac_key, salt + ciphertext, 'sha256').digest()
     assert len(hmac) == HMAC_SIZE
@@ -375,19 +377,17 @@ def encrypt(key, plaintext, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT):
     return ciphertext_base64
 
 
-
 def decrypt(key, ciphertext_base64, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT):
     """
-        Decrypts `ciphertext` with `key` using AES-128, an HMAC to verify integrity,
-        and PBKDF2 to stretch the given key.
+        Decrypts `ciphertext` with `key` using AES, an HMAC to verify integrity,
+        and Argon2 to stretch the given key.
 
         The exact algorithm is specified in the module docstring.
     """
     from hmac import new as new_hmac, compare_digest
     from base64 import b64decode
     ciphertext =b64decode(ciphertext_base64.encode())
-    print("\nAES128 DECRYPT",end='\t')
-    #print(f'check:{ciphertext}')
+    # print("\nAES128 DECRYPT",end='\t')
     assert len(ciphertext) % 16 == 0, "Ciphertext must be made of full 16-byte blocks."
 
     assert len(ciphertext) >= 32, """
@@ -403,22 +403,18 @@ def decrypt(key, ciphertext_base64, mode=MODE_ECB, key_size=AES_KEY_SIZE_DEFAULT
     key, hmac_key, iv = get_key_iv_argon2(key, salt,key_size)
 
     if mode == MODE_ECB:
-        print("(ECB MODE)")
+        #print("(ECB MODE)")
         plaintext = AES(key).decrypt_ecb(ciphertext)
 
         # return to plaintext utf-8 encoded
         return plaintext.decode('utf-8')
     elif mode == MODE_CBC:
-        print("(CBC MODE)")
+        #print("(CBC MODE)")
         expected_hmac = new_hmac(hmac_key, salt + ciphertext, 'sha256').digest()
         assert compare_digest(hmac, expected_hmac), 'Ciphertext corrupted or tampered.'
 
         # return to plaintext utf-8 encoded
         return AES(key).decrypt_cbc(ciphertext, iv).decode('utf-8')
-
-# def base64_to_hex(text_base64):
-#     return b64encode(text_base64.encode()).hex()
-
 
 """
     Encrypt:
@@ -436,10 +432,8 @@ class MyApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("AES")
-        self.geometry("420x600")
+        self.geometry("420x600") 
         self.resizable(False, False)
-
-        # self.iconbitmap(os.path.dirname(os.path.abspath(__file__))+"/aes.ico")
 
         # Create a select box (dropdown)
         self.select_var = ctk.StringVar()
@@ -457,15 +451,14 @@ class MyApp(ctk.CTk):
         self.key_lenght = ctk.CTkComboBox(self, width=70,values=["128","196","256"], variable=self.key_lenght,state="readonly")
         self.key_lenght.grid(row=0, column=3, padx=10, pady=5)
 
-        # Create the button
+        # Create the button Go
         self.go_button = ctk.CTkButton(self,width=80, text="Go", command=self.on_go_button_click)
         self.go_button.grid(row=0, column=4, padx=10, pady=5,sticky="E")
 
 
-        # Create input text boxes
+        # Create input text boxes INPUT
         self.label_input = ctk.CTkLabel(self, text="Plain Text",fg_color="transparent")
         self.label_input.grid(row=1, column=0,columnspan=5, padx=10, pady=0, sticky="W")
-
 
         self.textbox_input= ctk.CTkTextbox(self,width = 400)
         self.textbox_input.grid(row=2, column=0, columnspan=5,padx=10, pady=5)
@@ -481,6 +474,10 @@ class MyApp(ctk.CTk):
         #OUTPUT
         self.label_output = ctk.CTkLabel(self, text="Cipher Text", fg_color="transparent")
         self.label_output.grid(row=5, column=0,columnspan=5, padx=10, pady=0, sticky="W")
+
+        self.copy_button = ctk.CTkButton(self,width=80, text="copy", command=self.on_copy_button_click)
+        self.copy_button.grid(row=5, column=4, padx=10, pady=5,sticky="E")
+
         self.textbox_output = ctk.CTkTextbox(self,width = 400,state="disabled")
         self.textbox_output.grid(row=6, column=0,columnspan=5, padx=10, pady=5)
 
@@ -492,31 +489,33 @@ class MyApp(ctk.CTk):
         else:
             self.label_input.configure(text="Cipher Text")
             self.label_output.configure(text="Plain Text")
-            self.textbox_input.delete("0.0", "end")
-            self.textbox_input.insert("0.0",self.textbox_output.get("0.0", "end"))
-            self.textbox_output.configure(state="normal")
-            self.textbox_output.delete("0.0", "end")
-            self.textbox_output.configure(state="disabled")
+
+            ciphertext = self.textbox_output.get("0.0", "end")
+            len_ciphertext=len(ciphertext)
+            if len_ciphertext == 0 or ( len_ciphertext == 1 and ciphertext == "\n"):
+                pass
+            else:
+                self.textbox_input.delete("0.0", "end")
+                self.textbox_input.insert("0.0",ciphertext)
+                self.textbox_output.configure(state="normal")
+                self.textbox_output.delete("0.0", "end")
+                self.textbox_output.configure(state="disabled")
 
     def on_go_button_click(self):
-        from numpy import fromstring
         mode = self.select_var.get()
         mode_t = 1
         if self.select_mode.get() == "CBC":
             mode_t = 2
         self.textbox_output.configure(state="normal")
         self.textbox_output.delete("0.0", "end")
-
         Key = self.textbox_key.get()
         Input = self.textbox_input.get("0.0","end")
-        bit = fromstring(self.key_lenght.get(),dtype=int,sep=' ')[0]
-        print(bit)
+        bit = self.key_lenght.get()
         key_size = 16
-        if bit == 196:
+        if bit == "196":
             key_size = 24
-        elif bit == 256:
+        elif bit == "256":
             key_size = 32
-
         try:
             if mode == "Encrypt":
                 Output = encrypt(Key, Input,mode_t,key_size)
@@ -526,10 +525,18 @@ class MyApp(ctk.CTk):
             Output = f"""An error occurred {ERROR}\n
                         Check Input, Key or Mode again...
                     """
-
         #print(Output)
         self.textbox_output.insert("0.0",Output)
         self.textbox_output.configure(state="disabled")
+    def on_copy_button_click(self):
+        from pyperclip import copy
+        ciphertext = self.textbox_output.get("0.0", "end")
+        len_ciphertext=len(ciphertext)
+        if len_ciphertext == 0 or ( len_ciphertext == 1 and ciphertext == "\n"):
+            pass
+        else:
+            copy(ciphertext)
+            #print("copy to clipboard!")
 
 if __name__ == "__main__":
     app = MyApp()
